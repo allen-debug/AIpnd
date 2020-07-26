@@ -1,123 +1,122 @@
-import matplotlib.pyplot as plt
-import torch
-import time
-import numpy as np
-from torchvision import datasets, transforms, models
-from torch import nn
-from torch import optim
-from collections import OrderedDict
-import torch.nn.functional as F
-import torchvision.models as models
-from torch.autograd import Variable
-from PIL import Image
-import seaborn as sns
 import argparse
 import json
+import torch
+import pre_file
 
-# Imports functions created for this program
-from get_input_args_predict import get_input_args
+
+def get_command_line_args():
+    
+    parser = argparse.ArgumentParser()
+   
+    parser.add_argument('input', type=str,
+                        help='Image file')
+    
+    parser.add_argument('checkpoint', type=str,action='store', default='densenet121',
+                        help='Saved model checkpoint')
+
+    #
+        
+    parser.add_argument('--top_k', type=int,
+                        help='Return the top K most likely classes')
+    parser.set_defaults(top_k=1)
+    
+    parser.add_argument('--category_names', type=str,
+                        help='File of category names')
+
+    parser.add_argument('--gpu', dest='gpu',
+                        action='store_true', help='Use GPU')
+    parser.set_defaults(gpu=False)
+
+    return parser.parse_args()
+
 
 def main():
-
-    # Function to retrieve command line arguments entered by the user
-    in_arg = get_input_args()
     
-    #Load pre-trained model from checkpoint
-    model = load_checkpoint(in_arg.checkpoint)
-    #print(model)
+    args = get_command_line_args()
     
-    # Process Image
-    processed_image = process_image(in_arg.image_path) 
+    use_gpu = torch.cuda.is_available() and args.gpu
     
-    # Classify Prediction
-    top_probs, top_labels, top_flowers = predict(in_arg.image_path, model, in_arg.category_names, in_arg.top_k)
     
-###############################    
-def load_checkpoint(fil_pa):   
-#   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    checkpoint = torch.load(fil_pa)
-
-    model = models.vgg19(pretrained=True)
+    print("Input file: {}".format(args.input))
     
-    for am in model.parameters():
-        am.requires_grad = False
+    print("Checkpoint file: {}".format(args.checkpoint))
     
-    model.class_to_idx = checkpoint['class_to_idx']
-    
-    # Hyperparameters for our network
-    ip_s = 25088
-    hn_s = [4096, 256]
-    op_s = 102
-    
-    # Create the classifier
-    classifier = nn.Sequential(OrderedDict([
-                                          ('fc1', nn.Linear(ip_s, hn_s[0],  bias=True)), #first layer
-                                          ('Relu1', nn.ReLU()), #apply activation function
-                                          ('Dropout1', nn.Dropout(p = 0.3)),
-                                          ('fc2', nn.Linear(hn_s[0], op_s, bias=True)), #output layer
-                                          ('output', nn.LogSoftmax(dim=1)) #apply loss function
-                                          ]))
-    
-    # Put the classifier on the pretrained network
-    model.classifier = checkpoint['classifier']
-    model.load_state_dict(checkpoint['state_dict'])
-    #model.arch = checkpoint['arch'] 
-            
-    return model
-
-###############################
-def process_image(image_path):
-    ''' Scales, crops, and normalizes a PIL image for a PyTorch model,
-        returns an Numpy array
-    '''
-    
-    # TODO: Process a PIL image for use in a PyTorch model
-    # Use same image transformation code as earlier
-    ig = Image.open(image_path)
-    t_i = transforms.Compose([transforms.Resize(256),
-                                      transforms.CenterCrop(224),
-                                      transforms.ToTensor(),
-                                      transforms.Normalize([0.485, 0.456, 0.406], 
-                                                           [0.229, 0.224, 0.225])])
-    i_t = t_i(ig)
-    
-    return i_t
-
-###############################
-
-def predict(image_path, model, category_names, topk):
-    #Predict the class (or classes) of an image using a trained deep learning model
-    
-    # TODO: Implement the code to predict the class from an image file   
-    p_i = process_image(image_path)
-    p_i.unsqueeze_(0)
-    probs = torch.exp(model.forward(p_i))
-    top_probs, top_labs = probs.topk(topk)
-
-    with open(category_names, 'r') as f:
-        cat_to_name = json.load(f)
+    if args.top_k:
         
-    idx_to_class = {}
-    for key, value in model.class_to_idx.items():
-        idx_to_class[value] = key
+        print("Returning {} most likely classes".format(args.top_k))
+        
+    if args.category_names:
+        
+        print("Category names file: {}".format(args.category_names))
+        
+    if use_gpu:
+        
+        print("Using GPU.")
+        
+    else:
+        
+        print("Using CPU.")
+    
+    
+    model = pre_file.load_checkpoint(args.checkpoint)
+    
+    print("Checkpoint loaded.")
+    
+    
+    if use_gpu:
+        
+        model.cuda()
+    
+    
+    if args.category_names:
+        
+        with open(args.category_names, 'r') as f:
+            
+            categories = json.load(f)
+            
+            print("Category names loaded")
+    
+    results_to_show = args.top_k if args.top_k else 1
+    
+    
+    
+    print("Processing image")
+    
+    probabilities, clss = pre_file.predict(args.input, model, use_gpu, results_to_show, args.top_k)
+    
+    
+    if results_to_show > 1:
+        
+        print("Top {} Classes for '{}':".format(len(clss), args.input))
+        
 
-    np_top_labs = top_labs[0].numpy()
+        if args.category_names:
+            
+            print("{:<30} {}".format("Flower", "Probability"))
+            
+            print("----------------------------------------")
+            
+        else:
+            print("{:<10} {}".format("Class", "Probability"))
+            
+            print("--------------------")
 
-    top_labels = []
-    for label in np_top_labs:
-        top_labels.append(int(idx_to_class[label]))
-
-    top_flowers = [cat_to_name[str(lab)] for lab in top_labels]
-    print(top_flowers)
-    print(top_probs)
-    print(top_labels)
-    print(topk)
-    
-    
-    
-    
-    return top_probs, top_labels, top_flowers
-###############################
+        for i in range(0, len(clss)):
+            
+            if args.category_names:
+                
+                print("{:<30} {:.2f}".format(categories[clss[i]], probabilities[i]))
+                
+            else:
+                
+                print("{:<10} {:.2f}".format(clss[i], probabilities[i]))
+                
+    else:
+        
+        print("The most likely class is '{}': probability: {:.2f}" \
+              
+              .format(categories[clss[0]] if args.category_names else clss[0], probabilities[0]))
+        
     
 if __name__ == "__main__":
     main()
