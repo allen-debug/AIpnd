@@ -1,3 +1,10 @@
 # AIpnd
+To predict Normally:
 
-checkpoint file name in workspace 1 is : densenet121_checkpoint.pth
+python predict.py flowers/test/1/image_06743.jpg 
+
+
+To predict using gpu
+
+
+python predict.py flowers/test/1/image_06743.jpg --gpu
