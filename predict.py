@@ -1,197 +1,86 @@
-"""import files"""
-
+# Imports here
+import torch
 import numpy as np
-from torch import nn
-
-import json
-from torch import optim
-import torch.nn.functional as F
 from torchvision import datasets, transforms, models
 from PIL import Image
-import torch
-
-import os
+from torch.autograd import Variable
+import json
 import argparse
 
+# Define command line arguments
+parser = argparse.ArgumentParser()
+parser.add_argument('--image', type=str, default='TestPic.jpg', help='Image to predict')
+parser.add_argument('--checkpoint', type=str, default='checkpoint.pth', help='Model checkpoint for predicting')
+parser.add_argument('--gpu', type=bool, default=False, help='whether to use gpu')
+parser.add_argument('--cat_to_name', type=str, default='cat_to_name.json', help='path to category to flower name mapping json')
+parser.add_argument('--topk', type=int, default=5, help='display top k probabilities')
 
-"""def arch"""
-alexnet = models.alexnet(pretrained=True)
-"""def arch"""
-vgg16 = models.vgg16(pretrained=True)
-"""def arch"""
-densenet = models.densenet121(pretrained=True)
-"""def models"""
+args = parser.parse_args()
 
-models = {'alexnet': alexnet, 'vgg': vgg16,'densenet': densenet}
-
-"""def main"""
-
-def arg_get():
-    """def parser"""
-   
-    
-    parser = argparse.ArgumentParser()
-    
-    """def parser"""
-    parser.add_argument("image_patch", type = str,
-                        help = 'the image patch to test')
-    """def parser"""                    
-    parser.add_argument('--gpu', action='store_true',
-                        help = 'Use GPU to train')
-    """def parser"""
-    parser.add_argument('--load_file', type = str, default = 'trained/checkpoint.pth',
-                        help = 'Ouput directory of save models')
-    """def parser"""
-    parser.add_argument('--category_names', type = str, default = 'cat_to_name.json',
-                        help = 'Ouput directory of save models')
-    """def parser"""
-    parser.add_argument('--top_k', type = int, default = 5,
-                        help = 'The most K result classes')
-
-    return parser.parse_args()
+# Use command line values when specified
+image = args.image   
+catfile=args.cat_to_name
+checkpoint=args.checkpoint
+topk=args.topk
+if args.gpu==True:
+    device = 'gpu'
+else:    
+    device='cpu' 
 
 
-def main():
-    """def args"""
-    
-    in_arg = arg_get()
-    
-    print(in_arg)
-    """def model"""
-    
-    model_trained = load_checkpoint(in_arg.load_file)
-    """def device"""
-    
-    device = torch.device("cuda" if torch.cuda.is_available() and in_arg.gpu else "cpu")
-   
-    """def open"""
-    with open(in_arg.category_names, 'r') as f:
-        cat_to_name = json.load(f)
-    
-    p_t,l_t,f_t = predict(in_arg.image_patch,model_trained,in_arg.top_k,cat_to_name,device)
-    """def prediction"""
-    print_prediction(p_t,l_t,f_t,cat_to_name,in_arg.image_patch)
-
-
-def print_prediction(p_t,l_t,f_t,cat_to_name,image_path):
-    flower_num = image_path.split('/')[2]
-    title = cat_to_name[flower_num]
-    """define print"""
-    print("")
-    """define print"""
-    print("The flower  is {}".format(title))
-    """define print"""
-    out_str = ''
-    """define print"""
-    print("----------------------------")
-    """define print"""
-    for flower, probability in zip(f_t, p_t):
-        """define print"""
-        out_str += "flower name :  {}   -> probability  : {} \n".format(flower,probability)
-        """def print func"""
-        
-    print(out_str)
-
-    
-"""def chk pnt"""    
+# load a checkpoint
 def load_checkpoint(filepath):
-    """def chkpnt"""
     checkpoint = torch.load(filepath)
-    """def model"""
-    model = models[checkpoint['model_name']]
-    """def model"""
-    model.classifier = checkpoint['classifier']
-    """def model"""
+    model = models.vgg16()
+    model.classifier = checkpoint['classifier'] 
     model.load_state_dict(checkpoint['state_dict'])
-    """def model"""
     model.class_to_idx = checkpoint['class_to_idx']
-    """rtn model"""
-    
     return model
 
-    
-def img_pro(image):
-    
-    image = Image.open(image)
-    
-    if image.size[0] > image.size[1]:
-        """img sz"""
-        image.thumbnail((10000, 256))
-    else:
-        """img tnail"""
-        
-        image.thumbnail((256, 10000)) 
-    """mar def"""    
-    l_mar = (image.width-224)/2
-    """mar def"""  
-    b_mar = (image.height-224)/2
-    """mar def"""  
-    r_mar = l_mar + 224
-    """mar def"""  
-    t_mar = b_mar + 224
-    """mar def"""  
-    image = image.crop((l_mar, b_mar, r_mar,   
-                      t_mar))
-    """mar def"""  
-    image = np.array(image)/255
-    """mar def"""  
-    mean = np.array([0.485, 0.456, 0.406]) 
-    """mar def"""  
-    std = np.array([0.229, 0.224, 0.225]) 
-    """mar def"""  
-    image = (image - mean)/std
-    """mar def"""  
-    
-    
-    image = image.transpose((2, 0, 1))
-    """rtn stmt"""  
-    
-    return image
+modelLOAD=load_checkpoint(checkpoint)
 
-def predict(image_path, model, topk,cat_to_name, device):
-    """img arr"""
+def process_image(image):
+    """img pro"""
+    o_o = Image.open(image) 
+    l_l = transforms.Compose([transforms.Resize(255),
+                                      transforms.CenterCrop(224),
+                                      transforms.ToTensor(),
+                                      transforms.Normalize([0.485, 0.456, 0.406],
+                                                           [0.229, 0.224, 0.225])])
+    numpy_image = l_l(o_o)
     
-    image_array = img_pro(image_path)
-    """img arr"""
-    image_array = torch.from_numpy(image_array).type(torch.FloatTensor)
-    """img arr"""
-    image_array.unsqueeze_(0)
-    """img arr"""
-    model.to(device)
-    """img arr"""
-    with torch.no_grad():
-        """model"""
-        model.eval()
-        """model"""
-        ps = model.forward(image_array.to(device))
-        """ps"""
+    return numpy_image
 
-        ps = torch.exp(ps)
-        """ps"""
+def predict(image, model, topk=3):
+    ''' Predict the class (or classes) of an image using a trained deep learning model.
+    '''
+    
+    # DONE: Implement the code to predict the class from an image file
+    image=  Variable(torch.FloatTensor(image), requires_grad=True)
+    image = image.unsqueeze(0) #for VGG
+    if device=='gpu'and torch.cuda.is_available():
+        image = image.cuda()
+        model.to('cuda')
+    result = model(image).topk(topk)
+    probs = torch.nn.functional.softmax(result[0].data, dim=1).cpu().numpy()[0]
+    classes = result[1].data.cpu().numpy()[0]
+    idx_to_class = { v : k for k,v in model.class_to_idx.items()}
+    topk_class = [idx_to_class[x] for x in classes]  
+    return probs, topk_class
 
-        p_t, c_t =  ps.topk(topk, dim=1)
-        """t p lb"""
-        
-        p_t = p_t.detach().cpu().numpy().tolist()[0]
-        """tp p"""
-        c_t = c_t.detach().cpu().numpy().tolist()[0]
-        """tp cls"""
-        
-        
-        idx_to_class = {val: key for key, val in model.class_to_idx.items()}
-        """idx"""
-        
-        l_t = [idx_to_class[one_top_class] for one_top_class in c_t]
-        """tp lb"""
-        
-        f_t = [cat_to_name[idx_to_class[one_top_class]] for one_top_class in c_t]
-        """rtn stmt"""
-    
-        
-        return p_t,l_t,f_t
-    
-    
-##########--------------
-"""def main"""
+#ima = process_image(args.image)
+ima = process_image(image)
+probs, classes = predict(ima, modelLOAD, topk)
 
-main()    
+print(probs)
+print(classes)
+
+#print([cat_to_name[x] for x in classes])
+with open(catfile, 'r') as f:
+    cat_to_name = json.load(f)
+
+flowernames=[]
+for k in range(len(classes)):
+    flowername=(cat_to_name.get(classes[k]))
+    flowernames.append(flowername)
+print(flowernames)
