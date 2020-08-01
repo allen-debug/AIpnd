@@ -1,59 +1,53 @@
-import torch
-import numpy as np
-from torch import nn
-from torch import optim
-import torch.nn.functional as F
-from torchvision import datasets, transforms, models
+#Programmer : Allen
+#Date: 29 July 2020
 
-from PIL import Image
-from torch.autograd import Variable
-from collections import OrderedDict
+import torch
 import time
 import json
 import argparse
+import numpy as np
+from torch import nn
+from torchvision import datasets, transforms, models
+from collections import OrderedDict
+from PIL import Image
+from torch.autograd import Variable
+from torch import optim
+import torch.nn.functional as F
 
-# Define command line arguments
+
 parser = argparse.ArgumentParser()
-parser.add_argument('--data_dir', type=str, default='flowers', help='Path to dataset ')
-parser.add_argument('--gpu', type=bool, default=False, help='whether to use gpu')
-parser.add_argument('--arch', type=str, default='vgg', help='architecture [available: densenet, vgg]', required=True)
-parser.add_argument('--epochs', type=int, default=7, help='Number of epochs')
-parser.add_argument('--batchsize', type=int, default=16, help='Size for a batch')
-parser.add_argument('--learning_rate', type=float, default=0.0005, help='Learning rate')
-parser.add_argument('--hidden_units_Layer1', type=int, default=4000, help='hidden units for fc layer 1')
-parser.add_argument('--hidden_units_Layer2', type=int, default=630, help='hidden units for fc layer 2')
-parser.add_argument('--cat_to_name', type=str, default='cat_to_name.json', help='path to category to flower name mapping json')
-parser.add_argument('--checkpoint' , type=str, default='checkpoint.pth', help='path of your saved model')
+parser.add_argument('--data_dir', type=str, default='flowers', help='directory to the data ')
+parser.add_argument('--gpu', type=bool, default=False, help='use gpu if available')
+parser.add_argument('--arch', type=str, default='vgg', help='choosing the architecture available')
+parser.add_argument('--epochs', type=int, default=7, help='epoch number')
+parser.add_argument('--batchsize', type=int, default=16, help='define the batch size')
+parser.add_argument('--learning_rate', type=float, default=0.0005, help='Defining the learning rate')
+parser.add_argument('--hidden_units', type=int, default=4000, help='Defining the hidden unit for layers')
+parser.add_argument('--cat_to_name', type=str, default='cat_to_name.json', help='map json to the name of the flower')
+parser.add_argument('--checkpoint' , type=str, default='checkpoint.pth', help='checkpoint to save and predit')
+
 args = parser.parse_args()
 
 data_dir = args.data_dir  
-lr = args.learning_rate 
-epochs = args.epochs
-Layer1=args.hidden_units_Layer1
-Layer2=args.hidden_units_Layer2
-catfile=args.cat_to_name
-checkpoint=args.checkpoint
-b_size=args.batchsize
+
 
 if args.arch=='vgg':
+    print("training using vgg")
     model = models.vgg16(pretrained=True)
-    inputlayer=25088
-else:    
+    ip_layer=25088
+elif args.arch=='densenet121':
+    print("training using densenet")
     model = models.densenet121(pretrained=True)
-    inputlayer=1024
-if args.gpu==True:
-    device = 'gpu'
-    print('GPU calculation')
-else:    
-    device='cpu'
-    print('cpu calculation')
+    ip_layer=1024
+else:
+    print("training using alexnet")
+    model = models.alexnet(pretrained=True)
+    ip_layer=9216
 
-# Directorie
 train_dir = data_dir + '/train'
 valid_dir = data_dir + '/valid'
 test_dir = data_dir + '/test'
 
-#Define your transforms for the training, validation, and testing sets
 dataaload = transforms.Compose([transforms.RandomRotation(30),
                                       transforms.RandomResizedCrop(224),
                                       transforms.RandomHorizontalFlip(),
@@ -84,30 +78,31 @@ loaderr = torch.utils.data.DataLoader(loadt, batch_size=64, shuffle=True)
 vloaderr = torch.utils.data.DataLoader(transt, batch_size=32)
 tloaderr  = torch.utils.data.DataLoader(datat, batch_size=32)
 
-# Label mapping
-with open(catfile, 'r') as f:
-    cat_to_name = json.load(f)
-    
-#Build and train your network
 
-def do_deep_learning(model, vloaderr, print_every, criterion, optimizer, epochs, device='cpu'):
+with open('cat_to_name.json', 'r') as f:
+    cat_to_name = json.load(f)
+epochs = args.epochs
+def training_model(model, vloaderr, print_every, criterion, optimizer,epochs, device='cpu'):
     start = time.time()
     epochs = epochs
     print_every = print_every
-    steps = 0
+    running_loss=0
+    stp = 0
+    
 
-    # change to cuda
     if device=='gpu' and torch.cuda.is_available():
         model.to('cuda')
-        print('GPU available')
+        print('GPU is available')
     else:
-        print('GPU NOT available')
+        print('GPU not available')
+        
     for ch in range(epochs):
         """training"""
         for ip, lb in loaderr :
+            
             """training"""
             stp += 1
-            ip, lb = ip.to(device),lb.to(device)
+            ip, lb = ip.to('cuda'),lb.to('cuda')
             optimizer.zero_grad()
         
             logps = model.forward(ip)
@@ -117,7 +112,9 @@ def do_deep_learning(model, vloaderr, print_every, criterion, optimizer, epochs,
 
             running_loss += loss.item()
         
-            if stp % pv == 0:
+            if stp % print_every == 0:
+                print('Validation Completed')
+                
                 """training"""
                 valid_loss = 0
                 accuracy = 0
@@ -125,8 +122,9 @@ def do_deep_learning(model, vloaderr, print_every, criterion, optimizer, epochs,
                 with torch.no_grad():
                 
                     for ip, lb in vloaderr:
+                        
                         """training"""
-                        ip, lb = ip.to(device), lb.to(device)
+                        ip, lb = ip.to('cuda'), lb.to('cuda')
                         logps = model.forward(ip)
                         batch_loss = criterion(logps, lb)
                     
@@ -138,31 +136,38 @@ def do_deep_learning(model, vloaderr, print_every, criterion, optimizer, epochs,
                         accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
                     
                 print(f"Epoch {ch+1}/{epochs}.. "
-                    f"Train loss: {running_loss/pv:.3f}.. "
+                    f"Train loss: {running_loss/print_every:.3f}.. "
                     f"Valid loss: {valid_loss/len(vloaderr):.3f}.. "
                     f"Valid accuracy: {(accuracy/len(vloaderr))*100:.2f} %")
                 running_loss = 0
                 model.train()    
+    
 
     
-# Freeze parameters so we don't backprop through them
+
 for param in model.parameters():
     param.requires_grad = False
-
+    
+hlayer=args.hidden_units
 classifier = nn.Sequential(OrderedDict([
-                          ('fc1', nn.Linear(inputlayer, Layer1)),
+                          ('fc1', nn.Linear(ip_layer, hlayer)),
                           ('relu', nn.ReLU()),
-                          ('fc2', nn.Linear(Layer1, Layer2)),
+                          ('fc2', nn.Linear(hlayer, 630)),
                           ('relu', nn.ReLU()),
-                          ('fc3', nn.Linear(Layer2, 102)),
+                          ('fc3', nn.Linear(630, 102)),                          
                           ('output', nn.LogSoftmax(dim=1))
                           ]))
+    
 model.classifier = classifier
 criterion = nn.NLLLoss()
-optimizer = optim.Adam(model.classifier.parameters(), lr)
-do_deep_learning(model, trainloader, 40, criterion, optimizer, epochs, device)
-# validation on the test set
-def check_accuracy_on_test(tloaderr):    
+optimizer = optim.Adam(model.classifier.parameters(),args.learning_rate)
+if args.gpu==True:
+    device = 'gpu'
+else:
+    device='cpu'
+training_model(model, loaderr, 40, criterion, optimizer, epochs, device)
+
+def testing_model(tloaderr):    
     stp = 0
     """acc"""
     acc = 0
@@ -170,8 +175,8 @@ def check_accuracy_on_test(tloaderr):
     with torch.no_grad():
         for ip, lb in tloaderr:
         
-            ip = ip.to(device)
-            lb = lb.to(device)
+            ip = ip.to('cuda')
+            lb = lb.to('cuda')
         
             op = model.forward(ip)
                     
@@ -182,12 +187,11 @@ def check_accuracy_on_test(tloaderr):
                     
         print(f"Test accuracy: {(acc/len(tloaderr))*100:.2f} %")
 
-check_accuracy_on_test(tloaderr)
-
+testing_model(tloaderr)
+checkpoint=args.checkpoint
 model.class_to_idx = loadt.class_to_idx
-
 checkpoint = {'input_size': [3, 224, 224],
-              'batch_size': trainloader.batch_size,
+              'batch_size': loaderr.batch_size,
               'output_size': 102,
               'state_dict': model.state_dict(),
               'classifier': model.classifier,
@@ -196,3 +200,4 @@ checkpoint = {'input_size': [3, 224, 224],
               'epoch': epochs
              }
 torch.save(checkpoint, 'checkpoint.pth')
+
