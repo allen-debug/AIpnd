@@ -1,45 +1,40 @@
-# Imports here
+#Programmer : Allen
+#Date: 29 July 2020
 import torch
-import numpy as np
-from torchvision import datasets, transforms, models
-from PIL import Image
-from torch.autograd import Variable
 import json
+from torchvision import datasets, transforms, models
+import numpy as np
+from PIL import Image
 import argparse
+from torch.autograd import Variable
 
-# Define command line arguments
+
 parser = argparse.ArgumentParser()
-parser.add_argument('--image', type=str, default='TestPic.jpg', help='Image to predict')
-parser.add_argument('--checkpoint', type=str, default='checkpoint.pth', help='Model checkpoint for predicting')
-parser.add_argument('--gpu', type=bool, default=False, help='whether to use gpu')
-parser.add_argument('--cat_to_name', type=str, default='cat_to_name.json', help='path to category to flower name mapping json')
-parser.add_argument('--topk', type=int, default=5, help='display top k probabilities')
-
+parser.add_argument('--image', type=str, default='/home/workspace/ImageClassifier/flowers/test/34/image_06961.jpg', help='test image to predict')
+parser.add_argument('--checkpoint', type=str, default='checkpoint.pth', help='checkpoint to save and predit')
+parser.add_argument('--gpu', type = bool, default=False, help='use gpu if available')
+parser.add_argument('--cat_to_name', type=str, default='cat_to_name.json', help='map json to the name of the flower')
+parser.add_argument('--topk', type=int, default=5, help='To output the topk probability')
 args = parser.parse_args()
 
-# Use command line values when specified
-image = args.image   
-catfile=args.cat_to_name
-checkpoint=args.checkpoint
-topk=args.topk
 if args.gpu==True:
     device = 'gpu'
 else:    
     device='cpu' 
 
 
-# load a checkpoint
-def load_checkpoint(filepath):
+def chk_load(filepath):
     checkpoint = torch.load(filepath)
     model = models.vgg16()
     model.classifier = checkpoint['classifier'] 
     model.load_state_dict(checkpoint['state_dict'])
     model.class_to_idx = checkpoint['class_to_idx']
     return model
+checkpoint=args.checkpoint
+modelod=chk_load(checkpoint)
+ 
 
-modelLOAD=load_checkpoint(checkpoint)
-
-def process_image(image):
+def img_pro(image):
     """img pro"""
     o_o = Image.open(image) 
     l_l = transforms.Compose([transforms.Resize(255),
@@ -48,39 +43,28 @@ def process_image(image):
                                       transforms.Normalize([0.485, 0.456, 0.406],
                                                            [0.229, 0.224, 0.225])])
     numpy_image = l_l(o_o)
-    
     return numpy_image
 
 def predict(image, model, topk=3):
-    ''' Predict the class (or classes) of an image using a trained deep learning model.
-    '''
-    
-    # DONE: Implement the code to predict the class from an image file
     image=  Variable(torch.FloatTensor(image), requires_grad=True)
-    image = image.unsqueeze(0) #for VGG
+    image = image.unsqueeze(0) 
     if device=='gpu'and torch.cuda.is_available():
         image = image.cuda()
         model.to('cuda')
     result = model(image).topk(topk)
-    probs = torch.nn.functional.softmax(result[0].data, dim=1).cpu().numpy()[0]
-    classes = result[1].data.cpu().numpy()[0]
-    idx_to_class = { v : k for k,v in model.class_to_idx.items()}
-    topk_class = [idx_to_class[x] for x in classes]  
-    return probs, topk_class
+    pr = torch.nn.functional.softmax(result[0].data, dim=1).cpu().numpy()[0]
+    lob = result[1].data.cpu().numpy()[0]
+    idx_to_class = { value : key for key,value in model.class_to_idx.items()}
+    topk_class = [idx_to_class[lo] for lo in lob]  
+    return pr, topk_class
+image = args.image
+imagess = img_pro(image)
+topk=args.topk
+pr, clss = predict(imagess,modelod, topk)
 
-#ima = process_image(args.image)
-ima = process_image(image)
-probs, classes = predict(ima, modelLOAD, topk)
-
-print(probs)
-print(classes)
-
-#print([cat_to_name[x] for x in classes])
-with open(catfile, 'r') as f:
+with open('cat_to_name.json', 'r') as f:
     cat_to_name = json.load(f)
-
-flowernames=[]
-for k in range(len(classes)):
-    flowername=(cat_to_name.get(classes[k]))
-    flowernames.append(flowername)
-print(flowernames)
+fnames=[cat_to_name.get(clss[i]) for i in range(len(clss))]
+for i in range(4):
+    print("Flower Name: {},  Class: {} , Probability: {}".format(fnames[i],clss[i],pr[i]))
+    
