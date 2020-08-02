@@ -1,5 +1,5 @@
 #Programmer : Allen
-#Date: 29 July 2020
+#Date: 2 AUG 2020
 
 import torch
 import time
@@ -18,12 +18,12 @@ import torch.nn.functional as F
 parser = argparse.ArgumentParser()
 parser.add_argument('--data_dir', type=str, default='flowers', help='directory to the data ')
 parser.add_argument('--gpu', type=bool, default=False, help='use gpu if available')
-parser.add_argument('--arch', type=str, default='vgg', help='choosing the architecture available')
+parser.add_argument('--arch', type=str, default='vgg16', help='choosing the architecture available')
 parser.add_argument('--epochs', type=int, default=7, help='epoch number')
 parser.add_argument('--batchsize', type=int, default=16, help='define the batch size')
 parser.add_argument('--learning_rate', type=float, default=0.0005, help='Defining the learning rate')
 parser.add_argument('--hidden_units', type=int, default=4000, help='Defining the hidden unit for layers')
-parser.add_argument('--cat_to_name', type=str, default='cat_to_name.json', help='map json to the name of the flower')
+parser.add_argument('--category_names', type=str, default='cat_to_name.json', help='map json to the name of the flower')
 parser.add_argument('--checkpoint' , type=str, default='checkpoint.pth', help='checkpoint to save and predit')
 
 args = parser.parse_args()
@@ -31,18 +31,23 @@ args = parser.parse_args()
 data_dir = args.data_dir  
 
 
-if args.arch=='vgg':
+if args.arch=='vgg16':
     print("training using vgg")
+    cll=models.vgg16()
     model = models.vgg16(pretrained=True)
     ip_layer=25088
 elif args.arch=='densenet121':
     print("training using densenet")
+    cll=models.densenet121()
     model = models.densenet121(pretrained=True)
     ip_layer=1024
 else:
     print("training using alexnet")
+    cll=models.alexnet()
     model = models.alexnet(pretrained=True)
     ip_layer=9216
+    
+  
 
 train_dir = data_dir + '/train'
 valid_dir = data_dir + '/valid'
@@ -79,7 +84,7 @@ vloaderr = torch.utils.data.DataLoader(transt, batch_size=32)
 tloaderr  = torch.utils.data.DataLoader(datat, batch_size=32)
 
 
-with open('cat_to_name.json', 'r') as f:
+with open(args.category_names, 'r') as f:
     cat_to_name = json.load(f)
 epochs = args.epochs
 def training_model(model, vloaderr, print_every, criterion, optimizer,epochs, device='cpu'):
@@ -102,7 +107,8 @@ def training_model(model, vloaderr, print_every, criterion, optimizer,epochs, de
             
             """training"""
             stp += 1
-            ip, lb = ip.to('cuda'),lb.to('cuda')
+            if device=='gpu'and torch.cuda.is_available(): #
+                ip, lb = ip.to('cuda'), lb.to('cuda')#
             optimizer.zero_grad()
         
             logps = model.forward(ip)
@@ -193,6 +199,7 @@ model.class_to_idx = loadt.class_to_idx
 checkpoint = {'input_size': [3, 224, 224],
               'batch_size': loaderr.batch_size,
               'output_size': 102,
+              'arck': cll,
               'state_dict': model.state_dict(),
               'classifier': model.classifier,
               'optimizer_dict':optimizer.state_dict(),
